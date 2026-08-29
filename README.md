@@ -138,10 +138,27 @@ Pour garantir que l'application réagisse intelligemment et éviter les fausses 
   - Route `/stealth-text` : Continuité de la conversation via les boutons de l'interface, maintien de l'historique de conversation (contexte RAG court).
 - **Fiabilité JSON :** Implémentation d'un parseur intelligent `extractJSON` côté backend, capable d'ignorer les balises de raisonnement (`<think>...</think>`) des modèles type DeepSeek/Qwen R1 et d'extraire purement le JSON malgré les formattages Markdown capricieux des LLMs.
 
-### 4. Notifications, Hardware & Protocole d'Escalade
+### 5. Notifications, Hardware & Protocole d'Escalade
 - **Notifications Push :** Utilisation de `expo-notifications`.
 - **Hardware Control :** Utilisation de `Vibration` (API native), `expo-av` (pour la sirène) et `expo-camera` (pour le flash en mode Torch stroboscopique).
 - **Protocole de l'Agent Crash :** 
   - Étape 1 (Pré-Alerte, 5s) : Écran orange "Tout va bien ?" + Vibration intense + Analyse IA en arrière-plan.
   - Étape 2 (SOS, 15s) : Écran rouge + Sirène très forte + Flash stroboscope + Compte à rebours final.
   - Étape 3 (Dispatch) : Contacts d'urgence prévenus (Envoi via API Backend) et localisation GPS transmise.
+
+### 6. Radar Satellite 3D (God's Eye View)
+- **Technologie :** `CesiumJS` encapsulé dans une WebApp Vite, rendue sur le téléphone via `react-native-webview`.
+- **Interface Épurée (UI/UX) :** Injection dynamique de CSS/JS depuis l'application mobile pour masquer tous les contrôles d'interface du radar et offrir une expérience "Plein Écran" immersive.
+- **Marqueur Géographique 3D :** Contrairement à un simple point fixé à l'écran, un script JavaScript injecté instancie une véritable `Cesium.Entity` 3D (un point rouge clignotant type "Radar" avec un label textuel). Ce marqueur est solidement ancré au sol sur les coordonnées GPS exactes de la victime. Si l'utilisateur manipule la caméra (zoom, rotation), la cible reste physiquement sur le bâtiment ou la rue concernée.
+
+### 7. Intelligence Artificielle 100% Locale (Llama.cpp Edge AI)
+- **Objectif :** Analyser les alertes de survie sans aucune dépendance au Cloud, pour une résilience absolue hors-réseau.
+- **Frontend (Application) :** Ajout d'un panneau sur l'écran d'accueil permettant de télécharger le fichier du modèle GGUF (ex: Gemma-3-270m ou Qwen-0.5B, environ 300 Mo) directement dans le stockage local du téléphone via `expo-file-system`.
+- **Backend (Edge Server) :** Redirection complète du moteur d'analyse de survie. Les appels à l'API OpenAI/Groq ont été remplacés par une connexion à un serveur local `llama.cpp` (`http://127.0.0.1:8080/v1`). L'analyse de la gravité de la situation (batterie, offline) se fait désormais entièrement hors ligne, garantissant un fonctionnement même en cas de coupure Internet globale.
+
+### 8. Architecture de Confidentialité Zéro-Serveur (True P2P Mesh & E2EE)
+- **Problématique :** Comment transmettre une localisation en zone blanche (Mesh) sans qu'un serveur ou un téléphone intermédiaire ne puisse intercepter ces données privées ?
+- **Solution Technique (Privacy by Design) :** 
+  1. **Chiffrement de Bout-en-Bout (E2EE) :** L'application chiffre le paquet SOS (Latitude, Longitude) avec la clé publique des secours avant de l'émettre.
+  2. **Transmission Radio Native :** Utilisation du **Bluetooth Low Energy (BLE)** en mode "Advertising" (Diffusion) et du **Wi-Fi Direct**. Le paquet chiffré voyage littéralement dans les ondes (sans passer par la 4G/Wi-Fi public) et "rebondit" de téléphone en téléphone.
+  3. **Routage Aveugle :** Les téléphones agissant comme relais (les passants) transmettent le message de manière cryptographique et locale. Aucun serveur centralisé n'intercepte la position, garantissant un système d'urgence sécurisé, résilient et totalement privé.

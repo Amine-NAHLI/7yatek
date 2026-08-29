@@ -6,6 +6,8 @@ import { LogBox, View, Text, Modal, TouchableOpacity, StyleSheet, Linking, Scrol
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { WebView } from 'react-native-webview';
+import * as Notifications from 'expo-notifications';
+import * as FileSystem from 'expo-file-system';
 
 // Masquer les avertissements d'Expo Go qui n'affectent pas le fonctionnement
 LogBox.ignoreLogs([
@@ -41,6 +43,44 @@ export const OnboardingContext = createContext();
 export default function App() {
   const [onboardingData, setOnboardingData] = useState({});
   const [relayAlert, setRelayAlert] = useState(null);
+  const [isSatelliteOpen, setIsSatelliteOpen] = useState(false);
+
+  // Model Download State
+  const [downloadProgress, setDownloadProgress] = useState(0);
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [isModelReady, setIsModelReady] = useState(false);
+  const modelUri = FileSystem.documentDirectory + 'gemma-270m.gguf';
+
+  useEffect(() => {
+    // Check if model already exists
+    const checkModel = async () => {
+      const info = await FileSystem.getInfoAsync(modelUri);
+      if (info.exists) setIsModelReady(true);
+    };
+    checkModel();
+  }, []);
+
+  const downloadLocalModel = async () => {
+    setIsDownloading(true);
+    const downloadResumable = FileSystem.createDownloadResumable(
+      'https://huggingface.co/ggml-org/gemma-3-270m-it-qat-GGUF/resolve/main/gemma-3-270m-it-qat-Q4_0.gguf',
+      modelUri,
+      {},
+      (downloadInfo) => {
+        const progress = downloadInfo.totalBytesWritten / downloadInfo.totalBytesExpectedToWrite;
+        setDownloadProgress(progress);
+      }
+    );
+
+    try {
+      await downloadResumable.downloadAsync();
+      setIsModelReady(true);
+      setIsDownloading(false);
+    } catch (e) {
+      console.error("Erreur de téléchargement :", e);
+      setIsDownloading(false);
+    }
+  };
 
   useEffect(() => {
     // Initialisation du WebSocket et des notifications locales
@@ -63,7 +103,18 @@ export default function App() {
       }
     }, 1000);
 
-    return () => clearInterval(checkSocket);
+    // Écouter le clic sur la notification push locale
+    const responseListener = Notifications.addNotificationResponseReceivedListener(response => {
+      const data = response.notification.request.content.data;
+      if (data && data.type === 'mesh_relay_alert' && data.payload) {
+        setRelayAlert(data.payload);
+      }
+    });
+
+    return () => {
+      clearInterval(checkSocket);
+      Notifications.removeNotificationSubscription(responseListener);
+    };
   }, []);
 
   return (
@@ -114,50 +165,131 @@ export default function App() {
                 </View>
               </View>
 
-              {/* WebView 3D Spy Satellite (God's Eye View) */}
+              <TouchableOpacity 
+                style={[styles.actionBtnCall, { backgroundColor: '#374151', marginBottom: 15, paddingVertical: 14 }]} 
+                onPress={() => setIsSatelliteOpen(true)}
+              >
+                <Feather name="globe" size={20} color="white" />
+                <Text style={[styles.actionBtnText, { fontSize: 14, textAlign: 'center' }]}>🛰️ Ouvrir Caméra Satellite 3D</Text>
+              </TouchableOpacity>
+
               {relayAlert && (
-                <View style={styles.radarMapContainer}>
-                  <WebView 
-                    key={relayAlert.victimName}
-                    source={{ uri: `http://192.168.1.188:4173/#lat=${relayAlert.latitude}&lon=${relayAlert.longitude}&alt=1200&pitch=-45&heading=0&style=flir&hud=tactical&hv=1&dm=BALANCED` }}
-                    style={{ flex: 1 }}
-                    javaScriptEnabled={true}
-                    domStorageEnabled={true}
-                    startInLoadingState={true}
-                    mixedContentMode="always"
-                    allowsInlineMediaPlayback={true}
-                    renderLoading={() => (
-                      <View style={{ flex: 1, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center' }}>
-                        <Text style={{ color: '#EF4444', fontWeight: 'bold' }}>📡 LOCKING SATELLITE TARGET...</Text>
-                      </View>
-                    )}
-                  />
+                <View style={styles.actionButtonsRow}>
+                  <TouchableOpacity 
+                    style={[styles.actionBtnMaps, { flex: 1, marginRight: 5 }]} 
+                    onPress={() => Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${relayAlert?.latitude},${relayAlert?.longitude}`)}
+                  >
+                    <Feather name="map-pin" size={20} color="white" />
+                    <Text style={[styles.actionBtnText, {fontSize: 12}]}>Google Maps</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity 
+                    style={[styles.actionBtnCall, { flex: 1, marginLeft: 5 }]} 
+                    onPress={() => Linking.openURL(`sms:${relayAlert?.emergencyContactPhone}?body=🚨 URGENCE 7YATK : Je sers de relais réseau pour ${relayAlert?.victimName} qui est en danger. Localisation : https://maps.google.com/?q=${relayAlert?.latitude},${relayAlert?.longitude}`)}
+                  >
+                    <Feather name="send" size={20} color="white" />
+                    <Text style={[styles.actionBtnText, {fontSize: 12, textAlign: 'center', flexShrink: 1}]}>Transmettre Alerte</Text>
+                  </TouchableOpacity>
                 </View>
               )}
-
-              <View style={styles.actionButtonsRow}>
-                <TouchableOpacity 
-                  style={styles.actionBtnMaps} 
-                  onPress={() => Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${relayAlert?.latitude},${relayAlert?.longitude}`)}
-                >
-                  <Feather name="map-pin" size={20} color="white" />
-                  <Text style={styles.actionBtnText}>Ouvrir GPS</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity 
-                  style={styles.actionBtnCall} 
-                  onPress={() => Linking.openURL(`sms:${relayAlert?.emergencyContactPhone}?body=🚨 URGENCE 7YATK : Je sers de relais réseau pour ${relayAlert?.victimName} qui est en danger. Localisation : https://maps.google.com/?q=${relayAlert?.latitude},${relayAlert?.longitude}`)}
-                >
-                  <Feather name="send" size={20} color="white" />
-                  <Text style={[styles.actionBtnText, {fontSize: 13, textAlign: 'center', flexShrink: 1}]}>Transmettre l'alerte</Text>
-                </TouchableOpacity>
-              </View>
 
               <TouchableOpacity style={styles.relayCloseBtn} onPress={() => setRelayAlert(null)}>
                 <Text style={styles.relayCloseBtnText}>J'AI COMPRIS (Fermer)</Text>
               </TouchableOpacity>
             </ScrollView>
           </SafeAreaProvider>
+        </Modal>
+
+        {/* Modal Plein Écran pour la Caméra Satellite 3D */}
+        <Modal
+          animationType="slide"
+          transparent={false}
+          visible={isSatelliteOpen}
+          onRequestClose={() => setIsSatelliteOpen(false)}
+        >
+          <View style={{ flex: 1, backgroundColor: '#000' }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 15, paddingTop: 40, backgroundColor: '#111' }}>
+              <Text style={{ color: '#fff', fontSize: 16, fontWeight: 'bold' }}>📡 Radar Satellite en Direct</Text>
+              <TouchableOpacity onPress={() => setIsSatelliteOpen(false)} style={{ padding: 5 }}>
+                <Feather name="x" size={28} color="white" />
+              </TouchableOpacity>
+            </View>
+
+            {relayAlert && (
+              <WebView 
+                source={{ uri: `http://192.168.1.188:4173/#lat=${relayAlert.latitude}&lon=${relayAlert.longitude}&alt=1200&pitch=-45&heading=0&style=flir&hud=tactical&hv=1&dm=BALANCED` }}
+                style={{ flex: 1 }}
+                javaScriptEnabled={true}
+                domStorageEnabled={true}
+                startInLoadingState={true}
+                mixedContentMode="always"
+                allowsInlineMediaPlayback={true}
+                injectedJavaScript={`
+                  const style = document.createElement('style');
+                  style.textContent = \`
+                    #title-bar, 
+                    #style-indicator, 
+                    #top-center-actions, 
+                    #command-dock, 
+                    #left-panel-stack, 
+                    #right-context-rail,
+                    #pp-toggles,
+                    #cesium-credits { 
+                      display: none !important; 
+                    }
+                  \`;
+                  document.head.appendChild(style);
+                  
+                  // Script to add 3D Marker to Cesium
+                  const targetLat = ${relayAlert.latitude};
+                  const targetLon = ${relayAlert.longitude};
+                  
+                  const initMarker = () => {
+                    if (window.__godsEyeView && window.__godsEyeView.viewer && window.Cesium) {
+                      const viewer = window.__godsEyeView.viewer;
+                      const Cesium = window.Cesium;
+                      
+                      // Add a 3D Entity marker
+                      viewer.entities.add({
+                        id: 'victim-target-marker',
+                        position: Cesium.Cartesian3.fromDegrees(targetLon, targetLat, 50),
+                        point: {
+                          pixelSize: 20,
+                          color: Cesium.Color.RED,
+                          outlineColor: Cesium.Color.WHITE,
+                          outlineWidth: 3,
+                          disableDepthTestDistance: Number.POSITIVE_INFINITY // Always visible on top of buildings
+                        },
+                        label: {
+                          text: 'CIBLE LOCALISÉE',
+                          font: '14pt monospace',
+                          style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+                          outlineWidth: 2,
+                          verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+                          pixelOffset: new Cesium.Cartesian2(0, -20),
+                          fillColor: Cesium.Color.RED,
+                          disableDepthTestDistance: Number.POSITIVE_INFINITY
+                        }
+                      });
+                      
+                      // Stop polling
+                      clearInterval(intervalId);
+                    }
+                  };
+                  
+                  // Check every 500ms if Cesium is loaded
+                  const intervalId = setInterval(initMarker, 500);
+                  
+                  true;
+                `}
+                renderLoading={() => (
+                  <View style={{ flex: 1, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center' }}>
+                    <Text style={{ color: '#EF4444', fontWeight: 'bold', fontSize: 18 }}>📡 CONNEXION SATELLITE EN COURS...</Text>
+                  </View>
+                )}
+              />
+            )}
+          </View>
         </Modal>
 
       </SafeAreaProvider>

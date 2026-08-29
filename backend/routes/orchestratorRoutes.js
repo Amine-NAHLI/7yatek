@@ -44,8 +44,8 @@ const adapter = new PrismaPg(pool);
 const prisma = new PrismaClient({ adapter });
 
 const openai = new OpenAI({
-  apiKey: process.env.GROQ_API_KEY,
-  baseURL: "https://api.groq.com/openai/v1"
+  apiKey: 'sk-local',
+  baseURL: "http://127.0.0.1:8080/v1"
 });
 
 router.post('/analyze', authenticateToken, async (req, res) => {
@@ -382,40 +382,56 @@ Réponds uniquement au format JSON :
     });
     const relayName = potentialRelays.length > 0 ? potentialRelays[0].name : null;
 
-    // Emission du Socket au Relais (Pour la démo, on broadcast à tous les écrans connectés)
+    // Récupérer de vrais utilisateurs depuis la base de données pour la simulation
+    const realUsers = await prisma.user.findMany({ take: 10 });
+    const fallbackNames = ["Youssef", "Dr. Mouhsine", "Ahmed", "Sara", "Fatima", "Karim"];
+    
+    // Obtenir 3 noms aléatoires depuis la BDD (ou fallback)
+    const getRandomName = () => {
+      if (realUsers.length > 0) {
+        return realUsers[Math.floor(Math.random() * realUsers.length)].name;
+      }
+      return fallbackNames[Math.floor(Math.random() * fallbackNames.length)];
+    };
+
+    const victimNameSimulated = getRandomName();
+
+    const relayNamesArray = [
+      `Smartphone de ${getRandomName()} (à 12m)`
+    ];
+
+    // Emission du Socket au Relais (Exclut l'émetteur du SOS)
     const io = req.app.get('io');
     if (io) {
-      const fakeNames = ["Youssef (Randonneur)", "Dr. Mouhsine (Blessé)", "Ahmed (Accident)", "Sara (Perdue en montagne)"];
-      const randomName = fakeNames[Math.floor(Math.random() * fakeNames.length)];
-
-      console.log(`\x1b[33m📢 [SOCKET] Emission 'mesh_relay_alert' aux clients connectés\x1b[0m`);
-      io.emit('mesh_relay_alert', {
+      console.log(`\x1b[33m📢 [SOCKET] Emission 'mesh_relay_alert' aux clients connectés (sauf émetteur)\x1b[0m`);
+      
+      const payload = {
         victimId: req.user.userId,
-        victimName: randomName, // Dynamique pour la démo
+        victimName: victimNameSimulated, // Nom réel tiré de la BDD
         victimPhone: userProfile?.phone || '0600000000',
         emergencyContactPhone: userProfile?.emergencyContactPhone || '0600000000',
         latitude,
         longitude,
         battery: batteryLevel,
         dangerLevel: finalDecision.dangerLevel
-      });
+      };
+      
+      io.except(req.user.userId).emit('mesh_relay_alert', payload);
 
       // Simulation de l'alerte envoyée au contact d'urgence de la victime
-      console.log(`\x1b[33m📢 [SOCKET] Prévention des contacts d'urgence de la victime...\x1b[0m`);
-      io.emit('alert', {
+      console.log(`\x1b[33m📢 [SOCKET] Prévention des contacts d'urgence de la victime (sauf émetteur)...\x1b[0m`);
+      io.except(req.user.userId).emit('alert', {
         title: "🚨 CONTACT D'URGENCE",
-        body: `${userProfile?.name || 'Votre proche'} a déclenché un SOS hors-réseau. Les secours ont été prévenus.`,
-        data: { dangerLevel: 'critical', type: 'sos_manual' }
+        body: `${victimNameSimulated} a déclenché un SOS hors-réseau. Les secours ont été prévenus.`,
+        data: { 
+          dangerLevel: 'critical', 
+          type: 'mesh_relay_alert',
+          payload: payload
+        }
       });
     } else {
       console.log(`\x1b[31m❌ [SOCKET] Instance io introuvable !\x1b[0m`);
     }
-
-    const relayNamesArray = [
-      "iPhone de Karim (à 12m)",
-      "Galaxy S23 de Fatima (à 45m)",
-      "Appareil Inconnu (à 110m)"
-    ];
 
     res.json({
       status: "success",

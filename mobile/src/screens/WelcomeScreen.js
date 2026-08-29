@@ -3,6 +3,8 @@ import { View, Text, TouchableOpacity, TextInput, StyleSheet, Image } from 'reac
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as FileSystem from 'expo-file-system';
+import { Feather } from '@expo/vector-icons';
 
 // URL du Backend (À adapter si tu testes sur un vrai téléphone, ex: http://192.168.1.X:3000)
 const API_URL = 'http://192.168.1.188:3000/api/auth/login';
@@ -11,6 +13,44 @@ export default function WelcomeScreen({ navigation }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // Model Download State
+  const [downloadProgress, setDownloadProgress] = useState(0);
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [isModelReady, setIsModelReady] = useState(false);
+  const modelUri = FileSystem.documentDirectory + 'gemma-270m.gguf';
+
+  React.useEffect(() => {
+    const checkModel = async () => {
+      try {
+        const info = await FileSystem.getInfoAsync(modelUri);
+        if (info.exists) setIsModelReady(true);
+      } catch(e) {}
+    };
+    checkModel();
+  }, []);
+
+  const downloadLocalModel = async () => {
+    setIsDownloading(true);
+    const downloadResumable = FileSystem.createDownloadResumable(
+      'https://huggingface.co/ggml-org/gemma-3-270m-it-qat-GGUF/resolve/main/gemma-3-270m-it-qat-Q4_0.gguf',
+      modelUri,
+      {},
+      (downloadInfo) => {
+        const progress = downloadInfo.totalBytesWritten / downloadInfo.totalBytesExpectedToWrite;
+        setDownloadProgress(progress);
+      }
+    );
+
+    try {
+      await downloadResumable.downloadAsync();
+      setIsModelReady(true);
+      setIsDownloading(false);
+    } catch (e) {
+      console.error("Download error:", e);
+      setIsDownloading(false);
+    }
+  };
 
   const handleLogin = async () => {
     if (!email || !password) {
@@ -87,6 +127,38 @@ export default function WelcomeScreen({ navigation }) {
               <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
             </TouchableOpacity>
           </View>
+        </View>
+
+        {/* Local AI Download Panel */}
+        <View style={{ marginBottom: 20, width: '100%', backgroundColor: '#1F2937', padding: 15, borderRadius: 12, alignItems: 'center' }}>
+          <Text style={{ color: 'white', fontSize: 16, fontWeight: 'bold', marginBottom: 5 }}>IA Locale de Survie (Hors-Ligne)</Text>
+          <Text style={{ color: '#9CA3AF', fontSize: 12, textAlign: 'center', marginBottom: 15 }}>
+            Téléchargez le modèle d'intelligence artificielle pour que le téléphone puisse analyser les urgences sans internet.
+          </Text>
+
+          {isModelReady ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#064E3B', padding: 10, borderRadius: 8 }}>
+              <Feather name="check-circle" size={16} color="#10B981" />
+              <Text style={{ color: '#10B981', marginLeft: 8, fontWeight: 'bold', fontSize: 12 }}>Gemma 270M Téléchargé (Prêt)</Text>
+            </View>
+          ) : isDownloading ? (
+            <View style={{ width: '100%' }}>
+              <Text style={{ color: '#F3F4F6', marginBottom: 5, textAlign: 'center', fontSize: 12 }}>
+                Téléchargement : {(downloadProgress * 100).toFixed(1)}%
+              </Text>
+              <View style={{ width: '100%', height: 8, backgroundColor: '#374151', borderRadius: 4, overflow: 'hidden' }}>
+                <View style={{ width: `${downloadProgress * 100}%`, height: '100%', backgroundColor: '#3B82F6' }} />
+              </View>
+            </View>
+          ) : (
+            <TouchableOpacity 
+              style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#3B82F6', padding: 12, borderRadius: 8, width: '100%', justifyContent: 'center' }} 
+              onPress={downloadLocalModel}
+            >
+              <Feather name="download-cloud" size={16} color="white" />
+              <Text style={{ color: 'white', marginLeft: 8, fontWeight: 'bold', fontSize: 14 }}>Télécharger le Modèle (300 Mo)</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* Sign In Button */}
